@@ -27,8 +27,21 @@ type Manager struct {
 const (
 	configValidationTimeout   = 90 * time.Second
 	tunStartupTimeout         = 10 * time.Second
+	apiStartupTimeout         = 10 * time.Second
 	startupProcessStopTimeout = 3 * time.Second
 )
+
+// apiStartupTimeoutForStart lets slow boards (ARM NAS, cold storage, high
+// load) extend the mihomo API readiness window at runtime through the
+// OPENSURGE_MIHOMO_API_TIMEOUT environment variable, without rebuilding.
+func apiStartupTimeoutForStart() time.Duration {
+	if raw := strings.TrimSpace(os.Getenv("OPENSURGE_MIHOMO_API_TIMEOUT")); raw != "" {
+		if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+			return d
+		}
+	}
+	return apiStartupTimeout
+}
 
 func New(cfg config.Config, paths runtime.Paths) Manager {
 	return Manager{cfg: cfg, paths: paths}
@@ -94,7 +107,7 @@ func (m Manager) Start() (int, error) {
 		m.stopStartedProcess(pid)
 		return 0, err
 	}
-	if err := m.waitForAPI(pid, 2*time.Second); err != nil {
+	if err := m.waitForAPI(pid, apiStartupTimeoutForStart()); err != nil {
 		m.stopStartedProcess(pid)
 		return 0, err
 	}
